@@ -1,0 +1,61 @@
+version: "2.1"
+services:
+  broker:
+    image: docker.io/library/redis:6.0
+    restart: unless-stopped
+    volumes:
+      - redisdata:/data
+
+  db:
+    image: docker.io/library/postgres:13
+    restart: unless-stopped
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: paperless
+      POSTGRES_USER: paperless
+      POSTGRES_PASSWORD: paperless
+  
+  node-scan:
+    image: docker.io/manuc66/node-hp-scan-to:latest
+    restart: unless-stopped
+    hostname: NamePrinterWillSee
+    environment:
+      - IP=192.168.123.456
+      - PATTERN="scan"_dd.mm.yyyy_hh:MM:ss
+      - PGID=100
+      - PUID=1000
+      - TZ=America/New_York
+    volumes:
+      - ./consume:/scan
+
+  webserver:
+    image: ghcr.io/paperless-ngx/paperless-ngx:latest
+    restart: unless-stopped
+    depends_on:
+      - db
+      - broker
+    ports:
+      - 8010:8000
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "-S", "--max-time", "2", "http://localhost:8000"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    volumes:
+      - data:/usr/src/paperless/data
+      - media:/usr/src/paperless/media
+      - ./export:/usr/src/paperless/export
+      - ./consume:/usr/src/paperless/consume
+    environment:
+      PAPERLESS_REDIS: redis://broker:6379
+      PAPERLESS_DBHOST: db
+      USERMAP_UID: 1000
+      USERMAP_GID: 100
+      PAPERLESS_TIME_ZONE: America/New_York
+      PAPERLESS_SECRET_KEY: SomeReallyLongStringOfCharacters
+volumes:
+  data:
+  media:
+  pgdata:
+  redisdata:
